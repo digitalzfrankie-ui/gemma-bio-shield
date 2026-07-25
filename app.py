@@ -25,7 +25,7 @@ except ImportError:
     HAS_FPDF = False
 
 # --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="Gemma 4 Bio Shield - Africa", page_icon="🌾", layout="centered")
+st.set_page_config(page_title="Gemma 4 Crop Doctor - Africa", page_icon="🌾", layout="centered")
 
 # --- INITIALIZE SESSION STATE ---
 def init_session_state():
@@ -76,7 +76,7 @@ def generate_pdf(result, date_str):
         return str(txt).encode('latin-1', 'replace').decode('latin-1')
 
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt=safe_text("Gemma 4 Bio Shield - Africa Report"), ln=True, align='C')
+    pdf.cell(200, 10, txt=safe_text("Gemma 4 Crop Doctor - Africa Report"), ln=True, align='C')
     
     pdf.set_font("Arial", 'I', 10)
     pdf.cell(200, 10, txt=safe_text(f"Date: {date_str} | Country: {st.session_state.selected_country}"), ln=True, align='C')
@@ -98,8 +98,9 @@ def generate_pdf(result, date_str):
     return pdf.output(dest='S').encode('latin-1')
 
 # --- HEADER & HISTORY ---
-st.title("🌾 Gemma 4 Bio Shield (Pan-Africa)")
-st.caption("AI for Social Impact — Offline-Optimized & Multilingual Agricultural Diagnostic Platform")
+st.title("🌾 Gemma 4 AI Crop Doctor (Pan-Africa)")
+# CHANGED: Updated caption to reflect "Low-Bandwidth" instead of "Offline-Optimized"
+st.caption("AI for Social Impact — Low-Bandwidth & Mobile-Optimized Agricultural Diagnostic Platform")
 
 with st.expander("📖 View Previous Diagnoses (Session History)"):
     if not st.session_state.history:
@@ -277,15 +278,22 @@ def run_analysis():
                 return
 
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model='gemma-4-31b-it',
-                contents=contents_list,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    temperature=0.1
+            
+            # CHANGED: Added specific try-except for the API call to catch network timeouts
+            try:
+                response = client.models.generate_content(
+                    model='gemma-4-31b-it',
+                    contents=contents_list,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        response_mime_type="application/json",
+                        temperature=0.1
+                    )
                 )
-            )
+            except Exception as api_err:
+                st.error(f"⚠️ Network delay or API connection error: {str(api_err)}")
+                st.info("💡 Tip: Check your internet connection or try re-submitting.")
+                return
 
             raw_text = response.text
             clean_text = re.sub(r'^```json\s*|\s*```$', '', raw_text.strip(), flags=re.MULTILINE)
@@ -346,7 +354,8 @@ def render_audio_section(audio_summaries_dict):
                 st.audio(audio_buffer.getvalue(), format="audio/mp3")
                 
         except Exception:
-            st.info("💡 Audio playback temporarily unavailable offline.")
+            # CHANGED: Updated phrasing to reflect network instead of offline
+            st.info("💡 Audio playback temporarily unavailable (Network Connection Required).")
 
 # --- RESULT HANDLERS ---
 status = st.session_state.analysis_status
@@ -479,7 +488,7 @@ elif status == "diagnosed":
         st.download_button("🖼️ Download Image", data=img_byte_arr.getvalue(), file_name="crop_specimen.jpg", mime="image/jpeg", use_container_width=True)
 
     with col_exp3:
-        wa_text = f"🌾 *Gemma 4 Bio Shield*\n🌍 *Country:* {st.session_state.selected_country}\n🩺 *Disease:* {result.get('pathology_name')} ({acc}% Accuracy)\n⚠️ *Severity:* {severity.capitalize()}\n💡 *Treatment:* {result.get('preventative_guidance')}"
+        wa_text = f"🌾 *Gemma 4 Crop Doctor*\n🌍 *Country:* {st.session_state.selected_country}\n🩺 *Disease:* {result.get('pathology_name')} ({acc}% Accuracy)\n⚠️ *Severity:* {severity.capitalize()}\n💡 *Treatment:* {result.get('preventative_guidance')}"
         encoded_wa_text = urllib.parse.quote(wa_text)
         st.link_button("📲 Share WhatsApp", f"https://wa.me/?text={encoded_wa_text}", use_container_width=True)
 
