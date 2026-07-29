@@ -10,6 +10,7 @@ import urllib.parse
 from datetime import datetime
 from gtts import gTTS
 from PIL import Image
+from streamlit_local_storage import LocalStorage
 
 # Fallback for Audio Speed-Up & PDF Generation
 try:
@@ -27,6 +28,9 @@ except ImportError:
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Gemma 4 Bio Shield - Africa", page_icon="🌾", layout="centered")
 
+# --- INITIALIZE LOCAL STORAGE ---
+local_storage = LocalStorage()
+
 # --- INITIALIZE SESSION STATE ---
 def init_session_state():
     defaults = {
@@ -43,6 +47,11 @@ def init_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+    # Load saved history from browser local storage on page refresh
+    saved_history = local_storage.getItem("gemma_bio_shield_history")
+    if saved_history and not st.session_state.history:
+        st.session_state.history = saved_history
 
 init_session_state()
 
@@ -103,7 +112,7 @@ st.caption("AI for Social Impact — Low-Bandwidth & Mobile-Optimized Agricultur
 
 with st.expander("📖 View Previous Diagnoses (Session History)"):
     if not st.session_state.history:
-        st.info("No previous diagnoses recorded in this session yet.")
+        st.info("No previous diagnoses recorded yet.")
     else:
         for idx, record in enumerate(reversed(st.session_state.history)):
             st.markdown(f"**#{len(st.session_state.history) - idx} | {record['date']}**")
@@ -178,10 +187,15 @@ with tab_upload:
     uploaded_file = st.file_uploader(
         "Upload a clear photo of the affected leaf, stem, or fruit", 
         type=["jpg", "jpeg", "png"],
-        key=f"file_uploader_{st.session_state.uploader_key}"
+        key=f"file_uploader_{st.session_state.uploader_key}",
+        help="To prevent upload errors, keep file size below 5MB."
     )
     if uploaded_file:
-        img_input = Image.open(uploaded_file)
+        try:
+            img_input = Image.open(uploaded_file)
+        except Exception:
+            st.error("Uploaded file is corrupted or too large. Please try a different image.")
+            img_input = None
 
 with tab_camera:
     st.caption("💡 Tip: Ensure proper daylight and focus closely on symptoms.")
@@ -190,11 +204,17 @@ with tab_camera:
         key=f"camera_input_{st.session_state.uploader_key}"
     )
     if camera_file:
-        img_input = Image.open(camera_file)
+        try:
+            img_input = Image.open(camera_file)
+        except Exception:
+            st.error("Captured image is corrupted or too large. Please try again.")
+            img_input = None
 
 if img_input:
+    # Handle RGBA and Palette images before storing in session state
     if img_input.mode in ("RGBA", "P"):
         img_input = img_input.convert("RGB")
+        
     st.session_state.uploaded_image = img_input
     st.image(img_input, caption="Selected Specimen", use_container_width=True)
 
@@ -345,7 +365,6 @@ def render_audio_section(audio_summaries_dict):
                     st.audio(output_buffer.getvalue(), format="audio/mp3")
                     played_audio = True
                 except Exception:
-                    # Fall back safely if FFmpeg binary is missing on host environment
                     pass
             
             if not played_audio:
@@ -380,7 +399,6 @@ elif status in ["unknown_plant", "needs_clarification"]:
             
             st.markdown(f"**{q_text}**")
             
-            # Selectable Options
             selected_option = None
             if options:
                 selected_option = st.radio(
@@ -389,10 +407,8 @@ elif status in ["unknown_plant", "needs_clarification"]:
                     key=f"radio_{q_id}"
                 )
             
-            # Text Input inside form
             text_val = st.text_input("Or type custom description:", key=f"text_{q_id}")
 
-            # Save form inputs
             if selected_option and selected_option != "(Select option or use text below)":
                 answers[q_id] = selected_option
             elif text_val:
@@ -402,7 +418,6 @@ elif status in ["unknown_plant", "needs_clarification"]:
         
         submitted = st.form_submit_button("Submit Answers & Re-Analyze", type="primary", use_container_width=True)
 
-    # Audio inputs placed OUTSIDE the form to avoid Streamlit state bugs/clearing issues
     st.markdown("#### 🎙️ Optional Voice Input")
     st.caption("If you prefer to speak your answers instead of typing, record your voice note below:")
     for q in result.get("clarification_questions", []):
@@ -412,7 +427,6 @@ elif status in ["unknown_plant", "needs_clarification"]:
             audio_payloads[q_id] = voice_val.getvalue()
 
     if submitted:
-        # Merge answers and voice payloads
         final_answers = {}
         for q in result.get("clarification_questions", []):
             q_id = q.get("id")
@@ -459,8 +473,11 @@ elif status == "diagnosed":
         "accuracy": acc,
         "guidance": result.get('preventative_guidance', 'N/A')
     }
+    
+    # Check for duplicates, append, and persist immediately to Local Storage
     if not any(h['date'] == history_entry['date'] for h in st.session_state.history):
         st.session_state.history.append(history_entry)
+        local_storage.setItem("gemma_bio_shield_history", st.session_state.history)
 
     st.markdown("---")
     if "audio_summaries" in result:
